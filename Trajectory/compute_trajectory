@@ -1,0 +1,101 @@
+"""
+This function detects steps, estimates step lengths, calculates relative orientation using quaternions,
+and reconstructs a trajectory. Used in pedestrian tracking and motion analysis.
+
+Available Functions
+-------------------
+[Public]
+compute_trajectory(...): Computes the 2D walking trajectory from IMU data using quaternion orientation and step detection.
+-------------------
+
+"""
+
+# ------------------------------------------------------------------------------------------------------------------- #
+# imports
+# ------------------------------------------------------------------------------------------------------------------- #
+from constants import TIME
+import pandas as pd
+from typing import Tuple
+import numpy as np
+from .step_detection import step_detection
+from .features import calculate_dominant_frequency_walking_only, calculate_relative_rotation
+from .positions import compute_adaptive_trajectory, compute_position_density
+
+
+# ------------------------------------------------------------------------------------------------------------------- #
+# file specific constants
+# ------------------------------------------------------------------------------------------------------------------- #
+
+
+# ------------------------------------------------------------------------------------------------------------------- #
+# public functions
+# ------------------------------------------------------------------------------------------------------------------- #
+
+
+def compute_trajectory(data: pd.DataFrame, FS: int = 100, peak_threshold: float = 0.6, valley_threshold: float =0.3,
+                       window_mov_average: int=100, deriv_threshold: int = 60) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Computes the 2D walking trajectory of a person based on IMU data.
+
+    This function performs several processing steps:
+      1. Detects the dominant frequency to infer minimum interval between steps.
+      2. Calculates relative rotation between consecutive quaternion readings.
+      3. Detects steps and estimates step lengths using filtered acceleration data.
+      4. Extracts time values of the detected steps
+      5. Computes the trajectory.
+      6. Calculates the spatial density of the steps in 2D space.
+
+    :param data: Input DataFrame containing IMU signals and orientation data.
+    :param FS: Sampling frequency of the signals (in Hz).
+    :param peak_threshold: Threshold for peak detection, expressed as a fraction (0 to 1) of the envelope's maximum value.
+                       Peaks in the original signal envelope must be at least this fraction of the maximum to be detected.
+    :param valley_threshold: Threshold for valley detection, expressed as a fraction (0 to 1) of the envelope's maximum value.
+                        Since valleys are detected by finding peaks in the inverted envelope,
+                        this threshold corresponds to the minimum height these inverted peaks must have,
+                        i.e., valleys in the original signal must be at least this fraction below the maximum envelope value.
+
+    :param window_mov_average: Size of the moving average window for envelope smoothing (in seconds).
+    :param deriv_threshold: Threshold for detecting abrupt angular changes (used to filter steps).
+
+    :return: Tuple containing:
+        - data: DataFrame updated with trajectory and intermediate computation results.
+        - valid_peaks: Indices of detected steps after all filters.
+        - xs: X-coordinates of the estimated trajectory.
+        - ys: Y-coordinates of the estimated trajectory.
+        - densities: Density values for each point in the trajectory.
+        - angular_velocity: Derivative of the rotation signal used to detect abrupt motion.
+        - lengths: Estimated step lengths for each detected step.
+    """
+    print("Extracting metrics from detected human activities")
+
+    if not (0 <= peak_threshold <= 1):
+        raise ValueError(f"Invalid peak_threshold: {peak_threshold}. It must be between 0 and 1.")
+
+    if not (0 <= valley_threshold <= 1):
+        raise ValueError(f"Invalid valley_threshold: {valley_threshold}. It must be between 0 and 1.")
+
+    # 1. Estimate the dominant frequency and use it to calculate minimum step interval (in samples)
+    print("(1) Estimating the dominant walking frequency")
+    minimum_interval = calculate_dominant_frequency_walking_only(data, fs = FS)
+
+    # 2. Compute relative rotation between consecutive samples using quaternions
+    print("(2) Computing relative rotation")
+    data = calculate_relative_rotation(data)
+
+    # 3. Detect steps and estimate step lengths
+    print("(3) Detecting steps and estimating step lengths")
+    lengths, valid_peaks, data = step_detection(data,minimum_interval, peak_threshold, valley_threshold, window_mov_average,deriv_threshold,)
+
+    # 4. Extract time values of the detected steps
+    print("(4) Extracting time values of the detected steps")
+    step_times = data.loc[valid_peaks, TIME].values
+
+    # 5. Compute 2D trajectory from step lengths and orientations
+    print("(5) Computing 2D trajectory from step lengths and orientations")
+    data = compute_adaptive_trajectory(data, step_times, lengths)
+
+    # 6. Compute spatial densities of trajectory points
+    print("(6) Computing spatial densities of trajectory points")
+    xs, ys, densities = compute_position_density(data, step_times, minimum_interval)
+
+    return data, valid_peaks, xs, ys, densities, lengths
