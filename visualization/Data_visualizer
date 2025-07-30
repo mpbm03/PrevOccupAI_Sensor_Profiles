@@ -1,0 +1,121 @@
+"""
+Functions for Data Visualization.
+
+Available Functions
+-------------------
+[Public]
+visualization(...): Generates a complete set of visualizations including sensor signals, angular velocity, envelope with peaks, rotation, segmented trajectory, density, and interval-based trajectories.
+------------------
+"""
+
+# ------------------------------------------------------------------------------------------------------------------- #
+# imports
+# ------------------------------------------------------------------------------------------------------------------- #
+
+from constants import ACTIVITY, WALKING
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+
+# internal imports
+from .sensors import plot_sensor, plot_signal_with_envelope
+from .trajectory import (
+    plot_segmented_trajectory,
+    plot_trajectory_by_interval,
+    plot_density
+)
+from .rotation import (
+    plot_rotation_angle,
+    plot_angular_velocity
+)
+from .step_length import plot_step_length
+
+# ------------------------------------------------------------------------------------------------------------------- #
+# public functions
+# ------------------------------------------------------------------------------------------------------------------- #
+
+def generate_motion_visualizations(
+        data: pd.DataFrame, valid_peaks: np.array, xs: np.array, ys: np.array, densities: np.array,
+        threshold: float,
+        lengths: np.array,
+        sensor_axis_dict: dict = None,
+        n_cols_subplots: int =3,
+        show: bool = True,
+        save: bool=False,
+        save_dir: str = "plots"
+)-> None:
+    """
+    Generates a complete set of visualizations for analyzing sensor data and motion patterns.
+
+    The following plots are generated:
+        - Time-series plots of selected sensor axes with movement periods highlighted.
+        - Angular velocity over time with threshold lines.
+        - Filtered acceleration signal with envelope and valid peaks.
+        - Rotation angle over time with movement highlights.
+        - 2D trajectory plot segmented by walking intervals.
+        - Point density map.
+        - Trajectories by interval in subplots.
+
+    :param data: pandas DataFrame containing sensor data and computed metrics. Must include:
+                 - 't' (time),
+                 - 'activity',
+                 - sensor columns ,
+                 - 'rot_diff' (rotation angle),
+                 - 'y_ACC_filt' (filtered accelerometer signal),
+                 - envelope column.
+
+    :param valid_peaks: Indices or boolean mask of valid peaks to highlight on the filtered signal.
+
+    :param xs: List or array of x-coordinates for density and trajectory plots.
+    :param ys: List or array of y-coordinates for density and trajectory plots.
+    :param densities: List or array of density values associated with each (x, y) coordinate.
+
+    :param threshold: Float value for angular velocity threshold; used to plot reference lines.
+
+    :param lengths: Array containing estimated step lengths in meters.
+
+    :param sensor_axis_dict: Optional dictionary specifying which sensors and axes to plot.
+                             Format: {'ACC': ['x', 'y'], 'GYR': ['z'], ...}
+                             Default is {'ACC': ['y']} if not provided.
+
+    :param n_cols_subplots: Number of columns to use when arranging subplots for movement intervals.
+                            Default is 3.
+
+    :param show: Boolean indicating whether to display the plot on screen. Default is True.
+    :param save: Boolean indicating whether to save the plot as a PNG file. Default is False.
+    :param save_dir: String indicating the directory where plots should be saved if `save=True`.
+
+    """
+    # If no specific sensor axes are provided, default to plotting only the Y-axis of the accelerometer
+    if sensor_axis_dict is None:
+        sensor_axis_dict = {'ACC': ['y']}
+
+    # Loop over each sensor and its corresponding axes to generate time-series plots
+    for sensor, axes in sensor_axis_dict.items():
+        for axis in axes:
+            # Plot the sensor data for the given axis
+            plot_sensor(data, sensor=sensor, axis=axis, show=show, save=save, save_dir=save_dir)
+
+    # Plot the angular velocity over time, including a threshold reference line
+    plot_angular_velocity(data, threshold, show=show, save=save, save_dir=save_dir)
+
+    # Plot the filtered acceleration signal with its envelope and highlight valid movement peaks
+    plot_signal_with_envelope(data, valid_peaks, show=show, save=save, save_dir=save_dir)
+
+    # Plot the rotation angle over time and highlight intervals where movement is detected
+    plot_rotation_angle(data, show=show, save=save, save_dir=save_dir)
+    if (data[ACTIVITY] == WALKING).any():
+        # Plot a histogram of the estimated step lengths.
+        plot_step_length(lengths, show=show, save=save, save_dir=save_dir)
+
+        # Plot a 2D trajectory of the movement, segmented by walking intervals
+        plot_segmented_trajectory(data, show=show, save=save, save_dir=save_dir)
+
+        # Plot a 2D density map showing concentration of (x, y) coordinates
+        plot_density(xs, ys, densities, show=show, save=save, save_dir=save_dir)
+
+        # Create multiple trajectory subplots, one per movement interval, arranged in a grid
+        plot_trajectory_by_interval(data, n_cols_subplots = n_cols_subplots, show=show, save=save, save_dir=save_dir)
+
+
+
