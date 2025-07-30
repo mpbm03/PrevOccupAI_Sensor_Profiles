@@ -28,7 +28,7 @@ TOTAL_DURATION = 'total_duration'
 # ------------------------------------------------------------------------------------------------------------------- #
 # public functions
 # ------------------------------------------------------------------------------------------------------------------- #
-def analyze_total_movement(data: pd.DataFrame, valid_peaks: np.ndarray) -> dict:
+def analyze_total_movement(data: pd.DataFrame, valid_peaks: np.ndarray, sampling_freq: float) -> dict:
     """
     Analyzes walking activity in sensor trajectory data and computes movement statistics.
 
@@ -39,14 +39,17 @@ def analyze_total_movement(data: pd.DataFrame, valid_peaks: np.ndarray) -> dict:
         - Average speed (m/s)
 
     It also returns overall statistics for the entire walking period:
-        - Total distance
-        - Total duration
-        - Average walking speed (total_distance / total_duration)
+        - Total distance (meters)
+        - Total duration of walking (seconds)
+        - Average walking speed (m/s) = total_distance / total_duration
         - Total number of steps
         - Total number of walking segments
+        - Distance per total recording duration (m/s) = total_distance / total_recording_duration
+        - Steps per total recording duration (steps/s) = n_steps / total_recording_duration
 
     :param data: DataFrame containing position, time, and activity state.
     :param valid_peaks: Array of indices corresponding to detected step events.
+    :param sampling_freq: Sampling frequency of the recording in Hz.
 
     :return: dict with:
         - total_distance: float
@@ -54,6 +57,9 @@ def analyze_total_movement(data: pd.DataFrame, valid_peaks: np.ndarray) -> dict:
         - avg_speed: float
         - n_steps: int
         - n_segments: int
+        - total_recording_duration: float
+        - distance_per_total_duration: float
+        - steps_per_total_duration: float
         - movements: list of dicts with keys: distance, duration, avg_speed
     """
     print("Computing movement metrics")
@@ -92,11 +98,18 @@ def analyze_total_movement(data: pd.DataFrame, valid_peaks: np.ndarray) -> dict:
     # Compute total average speed
     total_avg_speed = total_distance / total_duration if total_duration > 0 else 0
 
+    # Compute total recording duration and derived metrics
+    total_recording_duration = len(data) / sampling_freq
+    distance_per_total_duration = total_distance / total_recording_duration if total_recording_duration > 0 else 0
+    steps_per_total_duration = len(valid_peaks) / total_recording_duration if total_recording_duration > 0 else 0
+
     print(f"Total walking distance: {total_distance:.2f} m")
-    print(f"Total duration: {total_duration:.2f} s")
+    print(f"Total duration (walking): {total_duration:.2f} s")
     print(f"Average walking speed: {total_avg_speed:.2f} m/s")
     print(f"Total detected steps: {len(valid_peaks)}")
-    print(f"Total walking segments: {len(movements)}\n")
+    print(f"Total walking segments: {len(movements)}")
+    print(f"Distance per total duration: {distance_per_total_duration:.4f} m/s")
+    print(f"Steps per total duration: {steps_per_total_duration:.4f} steps/s\n")
 
     return {
         "total_distance": total_distance,
@@ -104,8 +117,11 @@ def analyze_total_movement(data: pd.DataFrame, valid_peaks: np.ndarray) -> dict:
         "avg_speed": total_avg_speed,
         "n_steps": len(valid_peaks),
         "n_segments": len(movements),
+        "distance_per_total_duration": distance_per_total_duration,
+        "steps_per_total_duration": steps_per_total_duration,
         "movements": movements
     }
+
 
 def analyze_stationary_segments(
         data: pd.DataFrame,
@@ -243,7 +259,7 @@ def calculate_activity_proportions(
         }
 
     return {
-        "walking_proportion": durations[WALKING_NAME] / total,
-        "sitting_proportion": durations[SITTING_NAME] / total,
-        "standing_proportion": durations[STANDING_NAME] / total
+        "walking_proportion": durations[WALKING_NAME] / total* 100,
+        "sitting_proportion": durations[SITTING_NAME] / total* 100,
+        "standing_proportion": durations[STANDING_NAME] / total* 100
     }
